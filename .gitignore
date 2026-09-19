@@ -1,0 +1,4 @@
+/build/
+*.elc
+*.class
+*.jar
