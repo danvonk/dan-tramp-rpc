@@ -144,6 +144,10 @@ final class FileOps {
             }
             case "dir.create": {
                 Path f = path(p, "path");
+                // An existing directory is a successful no-op for mkdir -p.
+                // The client uses false to preserve Emacs's return value.
+                if (bool(p, "parents", false) && Files.isDirectory(f))
+                    return false;
                 if (bool(p, "parents", false))
                     Files.createDirectories(f);
                 else

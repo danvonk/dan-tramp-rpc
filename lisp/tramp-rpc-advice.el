@@ -367,7 +367,7 @@ PROC is the process being handled."
             (letrec ((fun (lambda (p _msg)
                             (remove-function (process-sentinel p) fun)
                             (when-let* ((buf (process-buffer p))
-                                        (_ (buffer-live-p buf)))
+                                        ((buffer-live-p buf)))
                               (with-current-buffer buf
                                 (tramp-rpc-handle-vc-exec-after code okstatus p))))))
               (add-function :after (process-sentinel proc) fun)))

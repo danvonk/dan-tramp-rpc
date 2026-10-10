@@ -12,8 +12,9 @@ settings and existing Projectile/Magit integration remain compatible.
 
 ## Requirements
 
-- Local Emacs 30.1 or newer and **TRAMP 2.8.1.4 or newer**. Emacs 30.2's bundled
+- Local Emacs **29.4 or newer** and **TRAMP 2.8.1.4 or newer**. Emacs 30.2's bundled
   TRAMP is too old; install a newer TRAMP package and load it before this backend.
+  Emacs 29.4 with separately installed TRAMP 2.8.2.3 is supported.
 - Linux remote host with OpenJDK 11 or newer, SSH, and standard Unix utilities
   (`sh`, `id`, `getent`, `kill`, `setsid`).
 - Interactive terminal processes additionally use util-linux **`script`** at
@@ -60,6 +61,28 @@ walking the tree with individual SSH calls. You can explicitly select:
 ```elisp
 (setq projectile-indexing-method 'alien)
 ```
+
+### Doom Emacs, including Emacs 29.4
+
+Copy `lisp/`, `vendor/`, and `dist/` together under
+`~/.config/doom/dan-tramp-rpc/`, preserving that directory structure. Add to
+`~/.config/doom/config.el`:
+
+```elisp
+(add-to-list 'load-path
+             (expand-file-name "dan-tramp-rpc/lisp" doom-user-dir))
+(require 'dan-tramp-rpc)
+(after! projectile
+  (setq projectile-indexing-method 'alien))
+```
+
+If `M-x tramp-version` already reports 2.8.2.3, keep that installation; no TRAMP
+or Emacs upgrade is needed. Restart Emacs after copying the files. When updating
+an earlier copy of this fork for Emacs 29.4, replace `lisp/tramp-rpc.el`,
+`lisp/tramp-rpc-advice.el`, and `dist/dan-tramp-rpc.jar`, and remove stale
+`lisp/*.elc` files compiled on another Emacs/TRAMP version. The updated JAR also
+preserves existing directory permissions and the correct return value when
+creating a directory with parents. Deployment settings are unchanged.
 
 To install the server manually, copy the JAR to the remote host and create an
 executable launcher beside it:
@@ -148,6 +171,7 @@ Deployment and fixtures are placed under `/tmp`, separate from normal installs.
 
 ```sh
 TRAMP_LISP=/path/to/new/tramp \
+EMACS=/path/to/emacs \
 TRAMP_RPC_TEST_HOST=pi TRAMP_RPC_TEST_USER=dan \
 DAN_TRAMP_TEST_JAVA=/path/to/remote/java \
   ./scripts/test-emacs.sh

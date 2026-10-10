@@ -4,6 +4,51 @@
 (require 'tramp-rpc-tests)
 (require 'filenotify)
 
+(ert-deftest dan-tramp-java-mkdir-parents-semantics ()
+  "Parent creation preserves return values and errors for RPC and local paths."
+  (should (tramp-rpc-test-enabled))
+  (let ((local-root (make-temp-file "dan-tramp-mkdir-" t)))
+    (unwind-protect
+        (tramp-rpc-test--with-temp-dir remote-root
+          (dolist (root (list local-root remote-root))
+            (let* ((default-directory (file-name-as-directory root))
+                   (directory "nested/path")
+                   (file "blocking-file"))
+              (should-not (make-directory directory t))
+              (set-file-modes directory #o700)
+              (should (make-directory directory t))
+              (should (= #o700 (logand #o777 (file-modes directory))))
+              (should-error (make-directory directory) :type 'file-already-exists)
+              (write-region "not a directory" nil file)
+              (should-error (make-directory (concat file "/child") t)
+                            :type 'file-error)
+              (should (file-regular-p file)))))
+      (delete-directory local-root t))))
+
+(ert-deftest dan-tramp-java-trash-connection-local-directory ()
+  "Trashing a remote file honors its connection profile on Emacs 29 and 30."
+  (skip-unless (not (fboundp 'system-move-file-to-trash)))
+  (should (tramp-rpc-test-enabled))
+  (let ((local-trash (make-temp-file "dan-tramp-trash-" t)))
+    (unwind-protect
+        (tramp-rpc-test--with-temp-dir dir
+          (let* ((default-directory (file-name-as-directory dir))
+                 (trash-directory nil)
+                 (connection-local-profile-alist
+                  `((dan-tramp-test-trash . ((trash-directory . ,local-trash)))))
+                 (connection-local-criteria-alist
+                  '(((:application tramp :protocol "rpc") dan-tramp-test-trash)))
+                 (file (expand-file-name "trash-me.txt" dir))
+                 (destination (expand-file-name "trash-me.txt" local-trash)))
+            (write-region "preserved in trash" nil file)
+            (move-file-to-trash file)
+            (should-not (file-exists-p file))
+            (should (equal "preserved in trash"
+                           (with-temp-buffer
+                             (insert-file-contents destination)
+                             (buffer-string))))))
+      (delete-directory local-trash t))))
+
 (ert-deftest dan-tramp-java-file-notifications ()
   "An external writer invalidates metadata and delivers a file notification."
   (should (tramp-rpc-test-enabled))

@@ -7,7 +7,7 @@
 ;; Version: 0.13.1
 ;; URL: https://github.com/ArthurHeymans/emacs-tramp-rpc
 ;; Keywords: comm, processes, files
-;; Package-Requires: ((emacs "30.1") (msgpack "0.1.1") (tramp "2.8.1.4"))
+;; Package-Requires: ((emacs "29.4") (msgpack "0.1.1") (tramp "2.8.1.4"))
 
 ;; This file is part of tramp-rpc.
 
@@ -1074,6 +1074,17 @@ flush every prefix to avoid stale negative predicate results."
       (tramp-rpc--invalidate-cache-for-path parent))
     (tramp-rpc--invalidate-cache-for-path filename)))
 
+(defun tramp-rpc--make-directory-with-parents (original dir &optional parents)
+  "Preserve PARENTS for RPC paths on Emacs 29; otherwise call ORIGINAL.
+DIR is the directory to create.  Respect other file handlers and inhibition."
+  (let ((expanded (expand-file-name dir)))
+    (if (and parents
+             (eq (find-file-name-handler expanded 'make-directory)
+                 #'tramp-file-name-handler)
+             (tramp-rpc-file-name-p expanded))
+        (tramp-rpc-file-name-handler 'make-directory expanded parents)
+      (funcall original dir parents))))
+
 (defun tramp-rpc-handle-make-directory (dir &optional parents)
   "Like `make-directory' for TRAMP-RPC files.
 
@@ -1807,7 +1818,7 @@ TRASH non-nil requests moving the file to the trash."
 This mirrors the `trash-directory' branch of `move-file-to-trash'.  It only
 returns a destination when that branch resolves to a local directory."
   (unless (fboundp 'system-move-file-to-trash)
-    (when-let* ((trash-directory (connection-local-value trash-directory))
+    (when-let* ((trash-directory (tramp-compat-connection-local-value trash-directory))
                 (trash-dir (expand-file-name trash-directory))
                 ((not (file-remote-p trash-dir))))
       (let* ((fn (directory-file-name (expand-file-name filename)))
@@ -3150,6 +3161,12 @@ FLAGS controls the requested operation."
 
 (defun tramp-rpc--install-core-external-operations ()
   "Install external operations implemented by the core module."
+  ;; Emacs 29 implements PARENTS before calling the file-name handler, losing
+  ;; the flag and doing separate RPCs for each ancestor.  Dispatch the whole
+  ;; operation for RPC paths so the server can create the tree in one call.
+  ;; This is a magic file operation, so do not register it as an external one.
+  (when (< emacs-major-version 30)
+    (advice-add 'make-directory :around #'tramp-rpc--make-directory-with-parents))
   (tramp-rpc--add-external-operation 'locate-dominating-file 'tramp-rpc-handle-locate-dominating-file 'tramp-rpc)
   (tramp-rpc--add-external-operation 'dir-locals--all-files 'tramp-rpc-handle-dir-locals--all-files 'tramp-rpc)
   (tramp-rpc--add-external-operation 'dir-locals-find-file 'tramp-rpc-handle-dir-locals-find-file 'tramp-rpc)
@@ -3323,6 +3340,7 @@ Removes advice and cleans up async processes."
   ;; Work around Emacs bug#80446 before explicitly unloading helper modules.
   (tramp-rpc--sanitize-native-comp-load-history)
   ;; Remove high-level external operations from tramp-rpc core.
+  (advice-remove 'make-directory #'tramp-rpc--make-directory-with-parents)
   (tramp-rpc--remove-external-operation 'locate-dominating-file 'tramp-rpc)
   (tramp-rpc--remove-external-operation 'dir-locals--all-files 'tramp-rpc)
   (tramp-rpc--remove-external-operation 'dir-locals-find-file 'tramp-rpc)

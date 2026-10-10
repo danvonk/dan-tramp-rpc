@@ -1,4 +1,55 @@
-# Validation record — 2026-09-19
+# Validation record
+
+## Emacs 29.4 compatibility — 2026-10-10
+
+Tested with an isolated GNU Emacs 29.4 built from the release tarball, and
+TRAMP **2.8.2.3** from emacs-straight/tramp commit
+`793be9a9ff439026b80c3c284588245ef79fb717`. The existing system Emacs and Doom
+configuration were not modified. Remote operations used `ssh dan@pi`, now
+running OpenJDK 21.0.12.1. The updated JAR is still built with `--release 11`;
+this compatibility run did not repeat the earlier Java 11 runtime validation.
+
+Both Emacs **29.4** and **30.2** passed strict byte-compilation and the SSH ERT
+suite: **106 passed, zero failed, four skipped**. Three skips require a second
+remote host; the fourth is the optional Projectile fixture, tested separately.
+The new regressions cover connection-local trash destinations, recursive mkdir
+return values, unchanged permissions of existing directories, blocking files,
+and local-path behavior. The inherited test still requires recursive RPC mkdir
+to use only one request.
+
+A separate Emacs 29.4 Projectile run enumerated **12,000 tracked files in
+1.216 seconds**. Projectile commit:
+`7cb1f64c1d68dd01acda8b7e3459ed11eb4fb2a8`; fixture:
+`/rpc:dan@pi:/tmp/dan-rpc-emacs29-projectile/`. This is a synthetic fixture, not
+the user's work repository or a test of the user's running Doom session.
+The rebuilt server also passed **35 protocol checks over SSH**. The local
+protocol run could not exercise PTYs because `/usr/bin/script` was absent;
+the Pi provides it and the full SSH run passed.
+
+Finally, after removing all generated `lisp/*.elc`, the combined source-only
+Emacs 29.4 run (including Projectile) passed **107 tests, zero failures, three
+multi-host skips**. This checks the `.el` files intended for manual copying.
+[Source-only run](test/results/emacs-29.4-source-ssh.log).
+
+Reproduce the compilation and ERT checks with:
+
+```sh
+EMACS=/path/to/emacs-29.4 TRAMP_LISP=/path/to/tramp-2.8.2.3 \
+  ./scripts/test-emacs.sh
+```
+
+Logs: [Emacs 29.4](test/results/emacs-29.4-ssh.log),
+[Emacs 30.2](test/results/emacs-30.2-compat-ssh.log),
+[Projectile on 29.4](test/results/projectile-29.4-ssh.log),
+[protocol](test/results/protocol-compat-ssh.log).
+
+Updated artifact SHA-256:
+
+```text
+0bc61edc03c079a2f9e335f80c8cbfdf09a962a41f59a3a3eb18e4344f735b15
+```
+
+## Original port validation — 2026-09-19
 
 The final server was compiled by `javac 11.0.32` with `--release 11`, all Java
 lint warnings treated as errors. Every class in the JAR has class-file version

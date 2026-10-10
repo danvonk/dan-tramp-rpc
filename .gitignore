@@ -2,3 +2,4 @@
 *.elc
 *.class
 *.jar
+!/dist/dan-tramp-rpc.jar
