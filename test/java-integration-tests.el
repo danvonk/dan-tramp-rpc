@@ -4,6 +4,35 @@
 (require 'tramp-rpc-tests)
 (require 'filenotify)
 
+(ert-deftest dan-tramp-java-manual-server-no-deployment ()
+  "Connection success and failure never attempt to install a server."
+  (let ((vec (tramp-dissect-file-name "/rpc:dan@example:/tmp/"))
+        (tramp-rpc-server-command "/opt/manual server/launcher")
+        (tramp-rpc-use-controlmaster nil))
+    (dolist (fail '(nil t))
+      (let ((starts 0) (cleanups 0))
+        (cl-letf (((symbol-function 'tramp-rpc--ensure-controlmaster-directory) #'ignore)
+                  ((symbol-function 'tramp-rpc--detect-sudo-elevation) #'ignore)
+                  ((symbol-function 'tramp-rpc--cleanup-failed-connection)
+                   (lambda (_) (cl-incf cleanups)))
+                  ((symbol-function 'tramp-rpc--start-server-process)
+                   (lambda (_ path _password)
+                     (cl-incf starts)
+                     (should (equal path tramp-rpc-server-command))
+                     (if fail
+                         (signal 'tramp-rpc-server-unavailable '("missing launcher"))
+                       'connected)))
+                  ((symbol-function 'copy-file) (lambda (&rest _) (ert-fail "Upload attempted")))
+                  ((symbol-function 'write-region) (lambda (&rest _) (ert-fail "Write attempted")))
+                  ((symbol-function 'make-directory) (lambda (&rest _) (ert-fail "Install attempted"))))
+          (if fail
+              (let ((err (should-error (tramp-rpc--connect vec)
+                                       :type 'tramp-rpc-server-unavailable)))
+                (should (string-match-p "Install.*manually" (error-message-string err))))
+            (should (eq (tramp-rpc--connect vec) 'connected)))
+          (should (= starts 1))
+          (should (= cleanups (if fail 1 0))))))))
+
 (ert-deftest dan-tramp-java-mkdir-parents-semantics ()
   "Parent creation preserves return values and errors for RPC and local paths."
   (should (tramp-rpc-test-enabled))

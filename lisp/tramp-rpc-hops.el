@@ -20,8 +20,7 @@
 ;; sudo privilege elevation carried over an rpc hop, and how to spell the
 ;; proxy chain for ssh.  It also reads and caches the sudo password.
 ;;
-;; This sits below both the transport and the deployment modules, which
-;; need the same answers about a vector.
+;; The transport uses these helpers to route SSH and sudo connections.
 
 ;;; Code:
 

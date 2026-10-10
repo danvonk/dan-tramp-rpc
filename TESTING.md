@@ -1,5 +1,30 @@
 # Validation record
 
+## Manual server installation — 2026-10-10
+
+Automatic deployment has been removed. The historical deployment instructions
+and results below describe earlier versions, not the current client.
+The deployment module and legacy variable alias have also been deleted;
+`tramp-rpc-server-command` is defined directly in the transport module.
+
+The current client was byte-compiled with warnings treated as errors using
+Emacs 29.4 and TRAMP 2.8.2.3, then tested over SSH to `dan@pi` with a manually
+installed JAR and launcher at `/tmp/dan-tramp-rpc-manual-test/`.
+**107 tests passed, zero failed, four skipped** (the optional Projectile test
+and three tests requiring a second host). The new regression checks both
+successful and failed startup, forbids installation writes, and verifies that
+a missing server is not retried through a deployment path.
+
+Reproduce after installing your server manually:
+
+```sh
+EMACS=/path/to/emacs-29.4 TRAMP_LISP=/path/to/tramp-2.8.2.3 \
+DAN_TRAMP_TEST_SERVER=/tmp/dan-tramp-rpc-manual-test/dan-tramp-rpc-server \
+  ./scripts/test-emacs.sh
+```
+
+[Manual-server test output](test/results/emacs-29.4-manual-server.log).
+
 ## Emacs 29.4 compatibility — 2026-10-10
 
 Tested with an isolated GNU Emacs 29.4 built from the release tarball, and

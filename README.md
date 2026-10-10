@@ -25,67 +25,11 @@ settings and existing Projectile/Magit integration remain compatible.
 `msgpack.el` is bundled under `vendor/`; no MELPA access is needed for it.
 The Java server needs no access to Maven Central or Artifactory, even to build.
 
-## Use it
+## Install the server manually
 
-Copy this directory to your work machine. Ensure your newer TRAMP package is
-on Emacs's load path, then add:
-
-```elisp
-(add-to-list 'load-path "/path/to/dan-tramp-rpc/lisp")
-(require 'dan-tramp-rpc)
-;; Optional when java is not on the remote PATH:
-;; (setq tramp-rpc-deploy-java-command "/path/to/jdk-11/bin/java")
-```
-
-Open a remote file or directory with `C-x C-f`:
-
-```text
-/rpc:dan@hostname:/path/to/project/
-```
-
-The first connection copies the local JAR and a small shell launcher to
-`~/.cache/emacs/dan-tramp-rpc/<content-id>/` using standard TRAMP. Subsequent
-connections start it directly. The content ID includes the JAR and Java path,
-so a new build is deployed separately from existing sessions. There are no
-remote downloads or compiler invocations. Normal SSH configuration and the
-inherited SSH jump-host/sudo support remain available; the latter were not
-exercised in the single-host test run.
-
-Do not load the original `emacs-tramp-rpc` and this fork in the same Emacs:
-they deliberately provide the same Lisp features and `/rpc:` method.
-
-For Projectile, visit the remote project first, then use its normal commands.
-The inherited integration uses remote commands to enumerate files instead of
-walking the tree with individual SSH calls. You can explicitly select:
-
-```elisp
-(setq projectile-indexing-method 'alien)
-```
-
-### Doom Emacs, including Emacs 29.4
-
-Copy `lisp/`, `vendor/`, and `dist/` together under
-`~/.config/doom/dan-tramp-rpc/`, preserving that directory structure. Add to
-`~/.config/doom/config.el`:
-
-```elisp
-(add-to-list 'load-path
-             (expand-file-name "dan-tramp-rpc/lisp" doom-user-dir))
-(require 'dan-tramp-rpc)
-(after! projectile
-  (setq projectile-indexing-method 'alien))
-```
-
-If `M-x tramp-version` already reports 2.8.2.3, keep that installation; no TRAMP
-or Emacs upgrade is needed. Restart Emacs after copying the files. When updating
-an earlier copy of this fork for Emacs 29.4, replace `lisp/tramp-rpc.el`,
-`lisp/tramp-rpc-advice.el`, and `dist/dan-tramp-rpc.jar`, and remove stale
-`lisp/*.elc` files compiled on another Emacs/TRAMP version. The updated JAR also
-preserves existing directory permissions and the correct return value when
-creating a directory with parents. Deployment settings are unchanged.
-
-To install the server manually, copy the JAR to the remote host and create an
-executable launcher beside it:
+On the **remote host**, create a directory such as `~/.local/lib/dan-tramp-rpc/`
+and copy `dist/dan-tramp-rpc.jar` into it as `server.jar`. Create a file named
+`dan-tramp-rpc-server` beside the JAR with these contents:
 
 ```sh
 #!/bin/sh
@@ -93,12 +37,65 @@ exec java --add-opens=java.base/sun.nio.fs=ALL-UNNAMED \
   -jar "$(dirname "$0")/server.jar" "$@"
 ```
 
-Then set:
+If necessary, replace `java` with the absolute path to the remote Java 11+
+executable. Make the launcher executable on that host:
+
+```sh
+chmod 700 ~/.local/lib/dan-tramp-rpc/dan-tramp-rpc-server
+```
+
+Emacs starts this launcher over SSH when needed. You do not need to start a
+server daemon. Emacs never copies, installs, updates, or downloads server files.
+After replacing the remote JAR yourself, restart Emacs or use
+`M-x tramp-cleanup-all-connections` so the next connection starts the new server.
+
+## Configure stock Emacs
+
+Copy only `lisp/` and `vendor/` into `~/.emacs.d/dan-tramp-rpc/`, preserving their
+relative layout. The local Emacs machine does not need a JAR or Java runtime.
+Add to `~/.emacs.d/init.el`, after your existing package setup:
 
 ```elisp
-(setq tramp-rpc-deploy-never-deploy t
-      tramp-rpc-deploy-remote-binary-path "/absolute/path/to/launcher")
+;; Omit these two lines if your init already initializes installed packages.
+(require 'package)
+(package-initialize)
+
+(add-to-list 'load-path
+             (expand-file-name "dan-tramp-rpc/lisp" user-emacs-directory))
+(setq tramp-rpc-server-command "~/.local/lib/dan-tramp-rpc/dan-tramp-rpc-server")
+(require 'dan-tramp-rpc)
+
+;; Optional, if you use Projectile:
+(with-eval-after-load 'projectile
+  (setq projectile-indexing-method 'alien))
 ```
+
+Keep your TRAMP 2.8.2.3 installation if you already have it. Restart Emacs and
+open a remote project with `C-x C-f`:
+
+```text
+/rpc:dan@hostname:/path/to/project/
+```
+
+`tramp-rpc-server-command` accepts an absolute path, a `~/` path, or a command
+name on the remote SSH PATH (default: `dan-tramp-rpc-server`). It names a single
+executable, not a command string with Java arguments. Use the launcher for those.
+When updating an existing installation, replace the `lisp/` directory entirely
+to remove obsolete modules and compiled files. Remove old `tramp-rpc-deploy-*`
+settings from your init file; `tramp-rpc-server-command` is the only server
+installation setting. Restart Emacs after updating.
+
+Do not load the original `emacs-tramp-rpc` and this fork in the same Emacs:
+they provide the same Lisp features and `/rpc:` method. Normal SSH configuration
+and inherited jump-host/sudo support remain available; install the launcher at a
+path accessible to the user who will run it (including the sudo target user).
+
+### Doom Emacs
+
+Copy `lisp/` and `vendor/` under `~/.config/doom/dan-tramp-rpc/`. In Doom's
+`config.el`, use the same launcher setting and require form, but construct the
+load path relative to `doom-user-dir` instead of `user-emacs-directory`.
+Doom manages package initialization itself.
 
 ## Build
 
@@ -167,18 +164,18 @@ concurrent writers to the same destination.
 
 All tests use disposable `emacs -Q --batch` sessions, never `emacsclient`.
 The runner isolates its D-Bus address from the desktop; see TESTING.md.
-Deployment and fixtures are placed under `/tmp`, separate from normal installs.
+Install a test launcher manually under `/tmp`, separate from normal installs.
 
 ```sh
 TRAMP_LISP=/path/to/new/tramp \
 EMACS=/path/to/emacs \
 TRAMP_RPC_TEST_HOST=pi TRAMP_RPC_TEST_USER=dan \
-DAN_TRAMP_TEST_JAVA=/path/to/remote/java \
+DAN_TRAMP_TEST_SERVER=/path/to/remote/dan-tramp-rpc-server \
   ./scripts/test-emacs.sh
 ```
 
-The runner builds the JAR, byte-compiles the Lisp with warnings treated as
-errors, and runs the inherited remote ERT suite plus Java-specific integration
+The runner uses your already installed server, byte-compiles the Lisp with
+warnings treated as errors, and runs the inherited remote ERT suite plus Java-specific integration
 tests. A second remote is optional (`TRAMP_RPC_TEST_HOST_2`).
 
 Additional black-box protocol tests need Python 3 and Python's `msgpack`

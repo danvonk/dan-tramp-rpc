@@ -255,7 +255,6 @@ This is called from `tramp-multi-hop-p-hook'."
 
 ;; Helper modules register internal lifecycle callbacks when loaded.
 ;; Editor integrations are installed after `tramp-rpc' is provided.
-(require 'tramp-rpc-deploy)
 (require 'tramp-rpc-process)
 (require 'tramp-rpc-advice)
 (require 'tramp-rpc-cache)
@@ -3348,7 +3347,7 @@ Removes advice and cleans up async processes."
   ;; Unload helper modules explicitly.  Their standard feature unload
   ;; functions perform module-specific cleanup.
   (dolist (feature '(tramp-rpc-advice tramp-rpc-magit tramp-rpc-cache
-                     tramp-rpc-process tramp-rpc-transport tramp-rpc-deploy
+                     tramp-rpc-process tramp-rpc-transport
                      tramp-rpc-hops tramp-rpc-connection tramp-rpc-protocol))
     (when (featurep feature)
       (unload-feature feature 'force)))

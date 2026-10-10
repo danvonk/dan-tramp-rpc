@@ -9,9 +9,8 @@ cd "$(dirname "$0")/.."
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/tmp/dan-tramp-rpc-no-bus-$$"
 export TRAMP_RPC_TEST_HOST="${TRAMP_RPC_TEST_HOST:-pi}"
 export TRAMP_RPC_TEST_USER="${TRAMP_RPC_TEST_USER:-dan}"
-export DAN_TRAMP_TEST_DEPLOY_DIR="${DAN_TRAMP_TEST_DEPLOY_DIR:-/tmp/dan-tramp-rpc-test}"
-export DAN_TRAMP_TEST_JAVA="${DAN_TRAMP_TEST_JAVA:-java}"
-./scripts/build.sh
+# Install the server manually before running this suite.
+export DAN_TRAMP_TEST_SERVER="${DAN_TRAMP_TEST_SERVER:-/tmp/dan-tramp-rpc-test/dan-tramp-rpc-server}"
 "$EMACS" -Q --batch -L "$TRAMP_LISP" -L vendor -L lisp \
   --eval '(setq load-prefer-newer t)' \
   --eval '(require (quote tramp-rpc))' \

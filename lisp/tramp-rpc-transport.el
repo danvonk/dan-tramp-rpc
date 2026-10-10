@@ -39,7 +39,14 @@
 (require 'tramp-rpc-protocol)
 (require 'tramp-rpc-connection)
 (require 'tramp-rpc-hops)
-(require 'tramp-rpc-deploy)
+
+(defcustom tramp-rpc-server-command "dan-tramp-rpc-server"
+  "Remote executable launcher for the Java RPC server.
+Use an absolute path, a ~/ path, or a command on the remote SSH PATH.
+This is one executable name, not a shell command with arguments.  Put Java
+options and the JAR path in the manually installed launcher."
+  :type 'string
+  :group 'tramp-rpc)
 
 ;; Emitted inside the autoload form in tramp-rpc.el.
 (defvar tramp-rpc-method)
@@ -1296,23 +1303,6 @@ Kills the process if still alive and removes the connection entry."
           (kill-buffer stderr-buffer)))
       (tramp-rpc--remove-connection vec))))
 
-(defun tramp-rpc--cleanup-bootstrap-connection (vec)
-  "Remove the scpx/scp bootstrap connection for VEC if it has state.
-The bootstrap connection is only needed during deployment.  Leaving its
-TRAMP cache entries behind lets background packages keep using tramp-sh for
-the same host while tramp-rpc is active.  In particular, a tramp-sh liveness
-probe can then interleave with RPC startup and corrupt the protocol stream."
-  (let* ((bootstrap-vec (tramp-rpc-deploy--bootstrap-vec vec))
-         (proc (tramp-get-connection-process bootstrap-vec)))
-    (when (or (process-live-p proc)
-              (tramp-connection-property-p bootstrap-vec " process-buffer")
-              (tramp-connection-property-p bootstrap-vec " connected"))
-      ;; Preserve authentication and unrelated asynchronous processes while
-      ;; removing the bootstrap shell, buffers, timers, and cached connection
-      ;; properties.
-      (tramp-cleanup-connection
-       bootstrap-vec 'keep-debug 'keep-password 'keep-processes))))
-
 (defun tramp-rpc--connect (vec)
   "Establish an RPC connection to VEC."
   ;; Ensure ControlMaster directory exists
@@ -1352,54 +1342,30 @@ probe can then interleave with RPC startup and corrupt the protocol stream."
          (sudo-password (when (and sudo-ssh-user
                                    (tramp-rpc--sudo-password-required-p vec))
                           (tramp-rpc--sudo-read-password vec sudo-ssh-user))))
-    (if tramp-rpc-deploy-never-deploy
-      ;; Never-deploy mode: use the configured path directly, no fallback.
-      (let ((binary-path (tramp-rpc-deploy-ensure-binary vec)))
-        (condition-case err
-            (progn
-              (tramp-rpc--cleanup-bootstrap-connection vec)
-              (tramp-rpc--start-server-process vec binary-path sudo-password))
-          (remote-file-error
-           (tramp-rpc--cleanup-failed-connection vec)
-           (signal 'remote-file-error
-                   (list (format
-			  "tramp-rpc-server not found at \"%s\" on %s (never-deploy is set, no deployment attempted). Set `tramp-rpc-deploy-remote-binary-path' to the correct path. Original error: %s"
-                          binary-path (tramp-file-name-host vec)
-                          (error-message-string err)))))))
-    ;; Normal mode: try expected path first, deploy on failure.
-    ;; This avoids opening a bootstrap (scpx) connection just to run
-    ;; `test -x binary', which takes ~6s for tramp-sh to establish the
-    ;; shell.  If the binary exists (the common case after first deploy),
-    ;; this connects directly.  If it doesn't exist (first time or after
-    ;; version bump), SSH exits immediately, we catch the error, deploy
-    ;; via scpx, and retry.
-    (condition-case err
-        (progn
-          ;; Remove bootstrap state left by an earlier deployment before the
-          ;; startup probe begins exchanging MessagePack frames.
-          (tramp-rpc--cleanup-bootstrap-connection vec)
-          (tramp-rpc--start-server-process
-           vec (tramp-rpc-deploy-expected-binary-localname) sudo-password))
-      ((tramp-rpc-server-unavailable tramp-rpc-sudo-auth-rejected)
-       ;; Binary missing or sudo rejected the password.  Clean up and deploy.
-       (tramp-rpc--cleanup-failed-connection vec)
-       ;; Deployment uses a bootstrap TRAMP connection.  Remove all of its
-       ;; state before retrying RPC startup, and also when deployment or the
-       ;; retry itself fails.
-       (unwind-protect
-           (let ((binary-path (tramp-rpc-deploy-ensure-binary vec)))
-             (tramp-rpc--cleanup-bootstrap-connection vec)
-             ;; Re-prompt only when sudo explicitly rejected the supplied
-             ;; password.  Missing-binary fallback keeps using the still-valid
-             ;; credential.
-             (when (and sudo-ssh-user
-                        (eq (car err) 'tramp-rpc-sudo-auth-rejected))
-               (setq sudo-password
-                     (when (tramp-rpc--sudo-password-required-p vec)
-                       (tramp-rpc--sudo-read-password vec sudo-ssh-user))))
-             (tramp-rpc--start-server-process
-              vec binary-path sudo-password))
-         (tramp-rpc--cleanup-bootstrap-connection vec)))))))
+    (let ((binary-path tramp-rpc-server-command))
+      (unless (and (stringp binary-path) (> (length binary-path) 0))
+        (user-error "Set tramp-rpc-server-command to your remote launcher path"))
+      (condition-case err
+          (condition-case auth-error
+              (tramp-rpc--start-server-process vec binary-path sudo-password)
+            (tramp-rpc-sudo-auth-rejected
+             ;; Retry authentication only; installation is always manual.
+             (tramp-rpc--cleanup-failed-connection vec)
+             (unless sudo-ssh-user
+               (signal (car auth-error) (cdr auth-error)))
+             (setq sudo-password
+                   (when (tramp-rpc--sudo-password-required-p vec)
+                     (tramp-rpc--sudo-read-password vec sudo-ssh-user)))
+             (tramp-rpc--start-server-process vec binary-path sudo-password)))
+        (error
+         (tramp-rpc--cleanup-failed-connection vec)
+         (if (eq (car err) 'tramp-rpc-server-unavailable)
+             (signal 'tramp-rpc-server-unavailable
+                     (list (format
+                            "Cannot start RPC server %S on %s. Install the Java JAR and launcher manually and set tramp-rpc-server-command. %s"
+                            binary-path (tramp-file-name-host vec)
+                            (error-message-string err))))
+           (signal (car err) (cdr err))))))))
 
 (defun tramp-rpc--disconnect (vec)
   "Disconnect the RPC connection to VEC explicitly."
